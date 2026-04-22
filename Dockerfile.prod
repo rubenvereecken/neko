@@ -1,0 +1,38 @@
+FROM golang:1.25-trixie AS build
+
+WORKDIR /src
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        libx11-dev libxrandr-dev libxtst-dev libgtk-3-dev libxcvt-dev \
+        libxi-dev \
+        libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev; \
+    apt-get clean -y; \
+    rm -rf /var/lib/apt/lists/*
+
+COPY server/ .
+RUN ./build core
+
+FROM debian:trixie-slim
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        ca-certificates wget \
+        libx11-6 libxrandr2 libxtst6 libxfixes3 libxi6 libxcvt0 \
+        libgtk-3-0 libcairo2 libxcb1 \
+        libopus0 libvpx9 libx264-164 librtmp1 \
+        gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+        gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly; \
+    apt-get clean -y; \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /src/bin/neko /usr/bin/neko
+
+ENV NEKO_SERVER_BIND=:8080
+
+HEALTHCHECK --interval=10s --timeout=5s --retries=8 \
+    CMD wget -O - http://localhost:${NEKO_SERVER_BIND#*:}/health || exit 1
+
+ENTRYPOINT ["/usr/bin/neko", "serve"]
