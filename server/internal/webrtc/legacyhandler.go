@@ -11,11 +11,14 @@ import (
 )
 
 const (
-	OP_MOVE     = 0x01
-	OP_SCROLL   = 0x02
-	OP_KEY_DOWN = 0x03
-	OP_KEY_UP   = 0x04
-	OP_KEY_CLK  = 0x05
+	OP_MOVE          = 0x01
+	OP_SCROLL        = 0x02
+	OP_KEY_DOWN      = 0x03
+	OP_KEY_UP        = 0x04
+	OP_KEY_CLK       = 0x05
+	OP_L_TOUCH_BEGIN  = 0x08
+	OP_L_TOUCH_UPDATE = 0x09
+	OP_L_TOUCH_END    = 0x0a
 )
 
 type PayloadHeader struct {
@@ -38,6 +41,14 @@ type PayloadScroll struct {
 type PayloadKey struct {
 	PayloadHeader
 	Key uint64 // TODO: uint32
+}
+
+type PayloadTouch struct {
+	PayloadHeader
+	TouchId  uint32
+	X        int32
+	Y        int32
+	Pressure uint8
 }
 
 func (manager *WebRTCManagerCtx) handleLegacy(
@@ -134,6 +145,32 @@ func (manager *WebRTCManagerCtx) handleLegacy(
 	case OP_KEY_CLK:
 		// unused
 		break
+	case OP_L_TOUCH_BEGIN, OP_L_TOUCH_UPDATE, OP_L_TOUCH_END:
+		payload := &PayloadTouch{}
+		if err := binary.Read(buffer, binary.LittleEndian, payload); err != nil {
+			return err
+		}
+
+		switch header.Event {
+		case OP_L_TOUCH_BEGIN:
+			if err := manager.desktop.TouchBegin(payload.TouchId, int(payload.X), int(payload.Y), payload.Pressure); err != nil {
+				logger.Warn().Err(err).Uint32("touchId", payload.TouchId).Msg("touch begin failed")
+			} else {
+				logger.Trace().Uint32("touchId", payload.TouchId).Msg("touch begin")
+			}
+		case OP_L_TOUCH_UPDATE:
+			if err := manager.desktop.TouchUpdate(payload.TouchId, int(payload.X), int(payload.Y), payload.Pressure); err != nil {
+				logger.Warn().Err(err).Uint32("touchId", payload.TouchId).Msg("touch update failed")
+			} else {
+				logger.Trace().Uint32("touchId", payload.TouchId).Msg("touch update")
+			}
+		case OP_L_TOUCH_END:
+			if err := manager.desktop.TouchEnd(payload.TouchId, int(payload.X), int(payload.Y), payload.Pressure); err != nil {
+				logger.Warn().Err(err).Uint32("touchId", payload.TouchId).Msg("touch end failed")
+			} else {
+				logger.Trace().Uint32("touchId", payload.TouchId).Msg("touch end")
+			}
+		}
 	}
 
 	return nil
